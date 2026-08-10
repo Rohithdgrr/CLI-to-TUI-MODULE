@@ -207,8 +207,11 @@ impl RatatuiRenderer {
                                 Action::FocusNext => state.focus_next(schema),
                                 Action::FocusPrev => state.focus_prev(schema),
                                 Action::ToggleEdit => {
-                                    state.editing = true;
                                     let field = &schema.fields[state.focused_index];
+                                    if field.readonly {
+                                        continue;
+                                    }
+                                    state.editing = true;
                                     state.cursor_pos = state.edit_buffer(&field.name).len();
                                 }
                                 Action::ToggleValue => {

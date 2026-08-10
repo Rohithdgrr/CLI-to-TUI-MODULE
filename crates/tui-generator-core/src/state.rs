@@ -122,6 +122,55 @@ impl FormState {
         }
         Ok(())
     }
+
+    pub fn to_cli_args(&self, schema: &TuiSchema) -> Vec<String> {
+        let mut args = Vec::new();
+        for field in &schema.fields {
+            if field.skip {
+                continue;
+            }
+            if let Some(val) = self.values.get(&field.name) {
+                match val {
+                    Value::String(s) => {
+                        args.push(format!("--{}", field.name));
+                        args.push(s.clone());
+                    }
+                    Value::Integer(n) => {
+                        args.push(format!("--{}", field.name));
+                        args.push(n.to_string());
+                    }
+                    Value::Float(f) => {
+                        args.push(format!("--{}", field.name));
+                        args.push(f.to_string());
+                    }
+                    Value::Bool(true) => {
+                        args.push(format!("--{}", field.name));
+                    }
+                    Value::Path(p) => {
+                        args.push(format!("--{}", field.name));
+                        args.push(p.to_string_lossy().to_string());
+                    }
+                    Value::List(items) => {
+                        for item in items {
+                            match item {
+                                Value::String(s) => {
+                                    args.push(format!("--{}", field.name));
+                                    args.push(s.clone());
+                                }
+                                Value::Integer(n) => {
+                                    args.push(format!("--{}", field.name));
+                                    args.push(n.to_string());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Value::Bool(false) | Value::None => {}
+                }
+            }
+        }
+        args
+    }
 }
 
 #[cfg(test)]

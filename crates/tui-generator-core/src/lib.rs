@@ -146,6 +146,70 @@ mod tests {
     }
 
     #[test]
+    fn test_to_cli_args() {
+        use crate::schema::{Field, TuiSchema};
+        use crate::state::FormState;
+        use crate::widget::WidgetKind;
+
+        let schema = TuiSchema {
+            name: "Test".into(),
+            description: None,
+            fields: vec![
+                Field {
+                    name: "verbose".into(),
+                    label: "Verbose".into(),
+                    description: None,
+                    required: false,
+                    default: None,
+                    widget: WidgetKind::Checkbox,
+                    constraints: vec![],
+                    options: vec![],
+                    skip: false,
+                    section: None,
+                    readonly: false,
+                },
+                Field {
+                    name: "name".into(),
+                    label: "Name".into(),
+                    description: None,
+                    required: true,
+                    default: None,
+                    widget: WidgetKind::TextInput,
+                    constraints: vec![],
+                    options: vec![],
+                    skip: false,
+                    section: None,
+                    readonly: false,
+                },
+                Field {
+                    name: "skip_me".into(),
+                    label: "Skip".into(),
+                    description: None,
+                    required: false,
+                    default: None,
+                    widget: WidgetKind::TextInput,
+                    constraints: vec![],
+                    options: vec![],
+                    skip: true,
+                    section: None,
+                    readonly: false,
+                },
+            ],
+            subcommands: vec![],
+        };
+
+        let mut state = FormState::from_schema(&schema);
+        state.set_value("verbose", Value::Bool(true));
+        state.set_value("name", Value::String("test".into()));
+
+        let args = state.to_cli_args(&schema);
+        assert!(args.contains(&"--verbose".to_string()));
+        assert!(args.contains(&"--name".to_string()));
+        assert!(args.contains(&"test".to_string()));
+        assert!(!args.contains(&"--skip_me".to_string()));
+    }
+
+    #[test]
     fn test_skip_field_uses_default() {
         let field = Field {
             name: "internal_id".into(),

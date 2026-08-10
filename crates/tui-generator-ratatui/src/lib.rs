@@ -7,6 +7,19 @@ use tui_generator_core::error::TuiError;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show
+        );
+    }
+}
+
 pub struct RatatuiRenderer;
 
 impl Default for RatatuiRenderer {
@@ -30,6 +43,8 @@ impl RatatuiRenderer {
             crossterm::terminal::EnterAlternateScreen,
             crossterm::cursor::Hide
         )?;
+
+        let _guard = TerminalGuard;
 
         let backend = ratatui::backend::CrosstermBackend::new(stdout);
         let mut terminal = ratatui::Terminal::new(backend)?;
@@ -244,7 +259,7 @@ fn key_to_action(key: crossterm::event::KeyEvent, state: &FormState, schema: &Tu
 fn render(
     f: &mut ratatui::Frame,
     area: Rect,
-    state: &FormState,
+    state: &mut FormState,
     schema: &TuiSchema,
 ) {
     let chunks = Layout::default()
@@ -274,7 +289,7 @@ fn render_header(f: &mut ratatui::Frame, area: Rect, schema: &TuiSchema) {
     f.render_widget(para, area);
 }
 
-fn render_form(f: &mut ratatui::Frame, area: Rect, state: &FormState, schema: &TuiSchema) {
+fn render_form(f: &mut ratatui::Frame, area: Rect, state: &mut FormState, schema: &TuiSchema) {
     use ratatui::widgets::{Block, Borders, Paragraph};
     use ratatui::style::{Style, Color};
 
@@ -290,10 +305,12 @@ fn render_form(f: &mut ratatui::Frame, area: Rect, state: &FormState, schema: &T
     let visible = (inner.height as usize) / field_height;
     let total = schema.fields.len();
 
-    if state.focused_index >= state.scroll_offset + visible {
-        // Use saturating sub to avoid underflow
-        let _new_offset = state.focused_index.saturating_sub(visible - 1);
-        // We don't mutate state here; scroll is handled by clamp in rendering
+    if visible > 0 {
+        if state.focused_index < state.scroll_offset {
+            state.scroll_offset = state.focused_index;
+        } else if state.focused_index >= state.scroll_offset + visible {
+            state.scroll_offset = state.focused_index.saturating_sub(visible - 1);
+        }
     }
 
     let scroll = state.scroll_offset.min(total.saturating_sub(1));
@@ -388,10 +405,16 @@ fn render_text_input(
         _ => String::new(),
     };
 
-    let display = if is_focused && state.editing {
+    let is_password = field.widget == WidgetKind::PasswordInput;
+
+    let display = if is_password && !is_focused {
+        "•".repeat(value_str.len()).to_string()
+    } else if is_focused && state.editing {
         format!("{}█", value_str)
     } else if value_str.is_empty() {
         "(empty)".to_string()
+    } else if is_password {
+        format!("{}█", "•".repeat(value_str.len()))
     } else {
         value_str
     };

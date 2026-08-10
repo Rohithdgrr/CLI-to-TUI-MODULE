@@ -1,5 +1,7 @@
 # `universal-tui-generator`
 
+> ⚠️ **v0.1 Prototype** — This is an early-stage prototype. Core pipeline works (string/bool/number/path/select widgets, basic validation). Many documented features (themes, mouse, subcommands, file pickers, etc.) are planned but not yet implemented. See [docs/problems.md](docs/problems.md) for known gaps.
+
 > Automatically transform existing Rust CLI argument definitions into an interactive Terminal User Interface — with minimal or zero additional UI code.
 
 ## What is it?

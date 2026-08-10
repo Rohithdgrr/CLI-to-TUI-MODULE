@@ -174,10 +174,33 @@ impl RatatuiRenderer {
                         if state.editing {
                             handle_edit_key(key, state, schema);
                         } else if state.focused_index < schema.fields.len()
-                            && schema.fields[state.focused_index].widget == WidgetKind::MultiSelect
-                            && key.code == crossterm::event::KeyCode::Enter
+                            && schema.fields[state.focused_index].widget
+                                == WidgetKind::MultiSelect
                         {
-                            handle_multi_select_toggle(state, schema);
+                            match key.code {
+                                crossterm::event::KeyCode::Enter => {
+                                    handle_multi_select_toggle(state, schema);
+                                }
+                                crossterm::event::KeyCode::Up
+                                | crossterm::event::KeyCode::Char('k') => {
+                                    let field = &schema.fields[state.focused_index];
+                                    if state.select_index > 0 && !field.options.is_empty() {
+                                        state.select_index -= 1;
+                                    }
+                                }
+                                crossterm::event::KeyCode::Down
+                                | crossterm::event::KeyCode::Char('j') => {
+                                    let field = &schema.fields[state.focused_index];
+                                    if state.select_index + 1 < field.options.len() {
+                                        state.select_index += 1;
+                                    }
+                                }
+                                crossterm::event::KeyCode::Esc
+                                | crossterm::event::KeyCode::Char('q') => {
+                                    state.select_index = 0;
+                                }
+                                _ => {}
+                            }
                         } else {
                             let action = key_to_action(key, state, schema);
                             match action {

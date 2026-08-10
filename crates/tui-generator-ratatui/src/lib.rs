@@ -173,6 +173,11 @@ impl RatatuiRenderer {
                         }
                         if state.editing {
                             handle_edit_key(key, state, schema);
+                        } else if state.focused_index < schema.fields.len()
+                            && schema.fields[state.focused_index].widget == WidgetKind::MultiSelect
+                            && key.code == crossterm::event::KeyCode::Enter
+                        {
+                            handle_multi_select_toggle(state, schema);
                         } else {
                             let action = key_to_action(key, state, schema);
                             match action {
@@ -262,6 +267,25 @@ fn handle_edit_key(
             }
         }
         _ => handle_text_edit_key(key, state, field),
+    }
+}
+
+fn handle_multi_select_toggle(state: &mut FormState, schema: &TuiSchema) {
+    let field = &schema.fields[state.focused_index];
+    let current_items: Vec<Value> = match state.get_value(&field.name) {
+        Some(Value::List(items)) => items.clone(),
+        _ => vec![],
+    };
+
+    if let Some(opt) = field.options.get(state.select_index) {
+        let opt_val = Value::String(opt.clone());
+        let mut new_items = current_items.clone();
+        if let Some(pos) = new_items.iter().position(|v| v == &opt_val) {
+            new_items.remove(pos);
+        } else {
+            new_items.push(opt_val);
+        }
+        state.set_value(&field.name, Value::List(new_items));
     }
 }
 
@@ -537,6 +561,7 @@ fn render_field(
         WidgetKind::Checkbox => render_checkbox(f, widget_area, field, state, is_focused, theme),
         WidgetKind::NumberInput => render_number_input(f, widget_area, field, state, is_focused, theme),
         WidgetKind::Select => render_select(f, widget_area, field, state, is_focused, theme),
+        WidgetKind::MultiSelect => render_multi_select(f, widget_area, field, state, is_focused, theme),
         _ => render_text_input(f, widget_area, field, state, is_focused, theme),
     }
 }
@@ -693,6 +718,74 @@ fn render_select(
     f.render_widget(para, area);
 }
 
+fn render_multi_select(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    field: &tui_generator_core::schema::Field,
+    state: &FormState,
+    is_focused: bool,
+    theme: &Theme,
+) {
+    use ratatui::widgets::Paragraph;
+
+    let current: Vec<String> = match state.get_value(&field.name) {
+        Some(Value::List(items)) => items.iter()
+            .filter_map(|v| match v {
+                Value::String(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect(),
+        Some(Value::String(s)) => vec![s.clone()],
+        _ => vec![],
+    };
+
+    let display = if current.is_empty() {
+        "(none selected)".to_string()
+    } else if current.len() <= 3 {
+        current.join(", ")
+    } else {
+        format!("{} selected: {}", current.len(), current[..3].join(", "))
+    };
+
+    let style = if is_focused {
+        Style::default().fg(theme.primary)
+    } else {
+        Style::default()
+    };
+
+    let para = Paragraph::new(display).style(style);
+    f.render_widget(para, area);
+}
+
+fn build_cli_preview(schema: &TuiSchema, state: &FormState) -> String {
+    let mut args = Vec::new();
+    for field in &schema.fields {
+        if field.skip {
+            continue;
+        }
+        if let Some(val) = state.get_value(&field.name) {
+            let arg_str = match val {
+                Value::String(s) => format!("--{} \"{}\"", field.name, s),
+                Value::Integer(n) => format!("--{} {}", field.name, n),
+                Value::Float(f) => format!("--{} {}", field.name, f),
+                Value::Bool(b) => {
+                    if *b { format!("--{}", field.name) } else { String::new() }
+                }
+                Value::Path(p) => format!("--{} \"{}\"", field.name, p.to_string_lossy()),
+                Value::List(_) | Value::None => String::new(),
+            };
+            if !arg_str.is_empty() {
+                args.push(arg_str);
+            }
+        }
+    }
+    if args.is_empty() {
+        "(no args set)".to_string()
+    } else {
+        format!("CLI: {}", args.join(" "))
+    }
+}
+
 fn render_footer(
     f: &mut ratatui::Frame,
     area: Rect,
@@ -719,7 +812,13 @@ fn render_footer(
         String::new()
     };
 
-    let text = format!("{}{}", hints, error_indicator);
+    let preview_raw = build_cli_preview(schema, state);
+    let preview = if preview_raw.len() > 60 {
+        format!("{}...", &preview_raw[..57])
+    } else {
+        preview_raw
+    };
+    let text = format!("{}    {}{}", hints, error_indicator, preview);
     let style = if !state.errors.is_empty() {
         Style::default().fg(theme.error)
     } else {

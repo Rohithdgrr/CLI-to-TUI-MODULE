@@ -103,6 +103,25 @@ impl FormState {
         };
         self.values.insert(field_name.to_string(), value);
     }
+
+    #[cfg(feature = "serde")]
+    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), crate::error::TuiError> {
+        let json = serde_json::to_string_pretty(&self.values)
+            .map_err(|e| crate::error::TuiError::ConversionError(e.to_string()))?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn load_from_file(&mut self, path: &std::path::Path) -> Result<(), crate::error::TuiError> {
+        let json = std::fs::read_to_string(path)?;
+        let values: HashMap<String, Value> = serde_json::from_str(&json)
+            .map_err(|e| crate::error::TuiError::ConversionError(e.to_string()))?;
+        for (key, value) in values {
+            self.values.insert(key, value);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

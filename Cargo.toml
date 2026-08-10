@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tui-generator-core",
+    "crates/tui-generator-macros",
+    "crates/tui-generator-clap",
+    "crates/tui-generator-ratatui",
+    "crates/tui-generator",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/user/universal-tui-generator"
+
+[workspace.dependencies]
+tui-generator-core = { path = "crates/tui-generator-core" }
+tui-generator-macros = { path = "crates/tui-generator-macros" }
+tui-generator-clap = { path = "crates/tui-generator-clap" }
+tui-generator-ratatui = { path = "crates/tui-generator-ratatui" }

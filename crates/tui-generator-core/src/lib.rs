@@ -28,6 +28,7 @@ mod tests {
             constraints,
             options: vec![],
             skip: false,
+            section: None,
         }
     }
 
@@ -120,5 +121,42 @@ mod tests {
             constraint: None,
         };
         assert_eq!(format!("{}", err), "email: email is required");
+    }
+
+    #[test]
+    fn test_field_with_section() {
+        let field = make_field("host", WidgetKind::TextInput, vec![]);
+        assert_eq!(field.section, None);
+
+        let field_with_section = Field {
+            name: "host".into(),
+            label: "Host".into(),
+            description: None,
+            required: true,
+            default: None,
+            widget: WidgetKind::TextInput,
+            constraints: vec![],
+            options: vec![],
+            skip: false,
+            section: Some("Network".into()),
+        };
+        assert_eq!(field_with_section.section, Some("Network".into()));
+    }
+
+    #[test]
+    fn test_skip_field_uses_default() {
+        let field = Field {
+            name: "internal_id".into(),
+            label: "Internal ID".into(),
+            description: None,
+            required: false,
+            default: Some(Value::Integer(0)),
+            widget: WidgetKind::TextInput,
+            constraints: vec![],
+            options: vec![],
+            skip: true,
+            section: None,
+        };
+        assert!(field.skip);
     }
 }

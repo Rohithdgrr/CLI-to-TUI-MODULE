@@ -19,6 +19,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "output".to_string(),
@@ -30,6 +31,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "threads".to_string(),
@@ -41,6 +43,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(64.0)],
                 options: vec![],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "format".to_string(),
@@ -57,6 +60,7 @@ fn build_schema() -> TuiSchema {
                     "gif".to_string(),
                 ],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "quality".to_string(),
@@ -68,6 +72,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(100.0)],
                 options: vec![],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "verbose".to_string(),
@@ -79,6 +84,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 skip: false,
+                section: None,
             },
             Field {
                 name: "overwrite".to_string(),
@@ -90,6 +96,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 skip: false,
+                section: None,
             },
         ],
         subcommands: vec![],

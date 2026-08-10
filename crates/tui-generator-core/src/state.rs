@@ -11,6 +11,7 @@ pub struct FormState {
     pub cursor_pos: usize,
     pub select_index: usize,
     pub errors: Vec<crate::validation::ValidationError>,
+    pub help_visible: bool,
 }
 
 impl FormState {
@@ -31,6 +32,7 @@ impl FormState {
             cursor_pos: 0,
             select_index: 0,
             errors: Vec::new(),
+            help_visible: false,
         }
     }
 
@@ -123,6 +125,7 @@ mod tests {
                 constraints: vec![],
                 options: vec![],
                 skip,
+                section: None,
             }).collect(),
             subcommands: vec![],
         }

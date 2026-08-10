@@ -42,10 +42,16 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let (default_ts, required) = extract_default(field, &ty_str, is_option);
         let options = extract_options(field);
         let skip = extract_skip(field);
+        let section = extract_section(field);
 
         let options_tokens: Vec<proc_macro2::TokenStream> = options.iter()
             .map(|o| quote! { #o.to_string() })
             .collect();
+
+        let section_ts = match &section {
+            Some(s) => quote! { Some(#s.to_string()) },
+            None => quote! { None },
+        };
 
         field_defs.push(quote! {
             ::tui_generator::core::schema::Field {
@@ -58,6 +64,7 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 constraints: vec![],
                 options: vec![#(#options_tokens),*],
                 skip: #skip,
+                section: #section_ts,
             }
         });
 
@@ -261,6 +268,11 @@ fn type_default(ty: &str) -> Option<proc_macro2::TokenStream> {
 fn extract_skip(field: &syn::Field) -> bool {
     let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
     metas.iter().any(|m| matches!(m, syn::Meta::Path(p) if p.is_ident("skip")))
+}
+
+fn extract_section(field: &syn::Field) -> Option<String> {
+    let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
+    find_meta_value(&metas, "section")
 }
 
 fn extract_options(field: &syn::Field) -> Vec<String> {

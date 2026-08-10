@@ -23,6 +23,7 @@ pub struct Field {
     pub constraints: Vec<Constraint>,
     pub options: Vec<String>,
     pub skip: bool,
+    pub section: Option<String>,
 }
 
 #[derive(Debug, Clone)]

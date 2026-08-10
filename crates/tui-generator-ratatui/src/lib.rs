@@ -6,6 +6,61 @@ use tui_generator_core::event::Action;
 use tui_generator_core::error::TuiError;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Style, Color, Modifier};
+
+pub struct Theme {
+    pub primary: Color,
+    pub text: Color,
+    pub border_focused: Color,
+    pub border_unfocused: Color,
+    pub error: Color,
+    pub success: Color,
+    pub section: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme {
+            primary: Color::Cyan,
+            text: Color::White,
+            border_focused: Color::Cyan,
+            border_unfocused: Color::DarkGray,
+            error: Color::Red,
+            success: Color::Green,
+            section: Color::Yellow,
+        }
+    }
+}
+
+impl Theme {
+    pub fn dark() -> Self {
+        Self::default()
+    }
+
+    pub fn light() -> Self {
+        Theme {
+            primary: Color::Blue,
+            text: Color::Black,
+            border_focused: Color::Blue,
+            border_unfocused: Color::Gray,
+            error: Color::Red,
+            success: Color::Green,
+            section: Color::Magenta,
+        }
+    }
+
+    pub fn monochrome() -> Self {
+        Theme {
+            primary: Color::White,
+            text: Color::White,
+            border_focused: Color::White,
+            border_unfocused: Color::DarkGray,
+            error: Color::White,
+            success: Color::White,
+            section: Color::White,
+        }
+    }
+}
 
 struct TerminalGuard;
 
@@ -20,7 +75,10 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub struct RatatuiRenderer;
+pub struct RatatuiRenderer {
+    theme: Theme,
+    mouse_enabled: bool,
+}
 
 impl Default for RatatuiRenderer {
     fn default() -> Self {
@@ -30,10 +88,27 @@ impl Default for RatatuiRenderer {
 
 impl RatatuiRenderer {
     pub fn new() -> Self {
-        Self
+        RatatuiRenderer {
+            theme: Theme::default(),
+            mouse_enabled: false,
+        }
+    }
+
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = theme;
+        self
+    }
+
+    pub fn with_mouse(mut self, enabled: bool) -> Self {
+        self.mouse_enabled = enabled;
+        self
     }
 
     pub fn run(schema: &TuiSchema) -> Result<FormState, TuiError> {
+        Self::new().run_tui(schema)
+    }
+
+    pub fn run_tui(&self, schema: &TuiSchema) -> Result<FormState, TuiError> {
         let mut state = FormState::from_schema(schema);
 
         crossterm::terminal::enable_raw_mode()?;
@@ -44,13 +119,23 @@ impl RatatuiRenderer {
             crossterm::cursor::Hide
         )?;
 
+        if self.mouse_enabled {
+            crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)?;
+        }
+
         let _guard = TerminalGuard;
 
         let backend = ratatui::backend::CrosstermBackend::new(stdout);
         let mut terminal = ratatui::Terminal::new(backend)?;
 
-        let result = run_loop(&mut terminal, &mut state, schema);
+        let result = self.run_loop(&mut terminal, &mut state, schema);
 
+        if self.mouse_enabled {
+            crossterm::execute!(
+                terminal.backend_mut(),
+                crossterm::event::DisableMouseCapture
+            )?;
+        }
         crossterm::terminal::disable_raw_mode()?;
         crossterm::execute!(
             terminal.backend_mut(),
@@ -62,55 +147,101 @@ impl RatatuiRenderer {
     }
 }
 
-fn run_loop(
-    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-    state: &mut FormState,
-    schema: &TuiSchema,
-) -> Result<FormState, TuiError> {
-    loop {
-        terminal.draw(|f| {
-            let area = f.area();
-            render(f, area, state, schema);
-        })?;
+impl RatatuiRenderer {
+    fn run_loop(
+        &self,
+        terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        state: &mut FormState,
+        schema: &TuiSchema,
+    ) -> Result<FormState, TuiError> {
+        loop {
+            terminal.draw(|f| {
+                let area = f.area();
+                render(f, area, state, schema, &self.theme);
+            })?;
 
-        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
-            if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-                if state.editing {
-                    handle_edit_key(key, state, schema);
-                } else {
-                    let action = key_to_action(key, state, schema);
-                    match action {
-                        Action::FocusNext => state.focus_next(schema),
-                        Action::FocusPrev => state.focus_prev(schema),
-                        Action::ToggleEdit => {
-                            state.editing = true;
-                            let field = &schema.fields[state.focused_index];
-                            state.cursor_pos = state.edit_buffer(&field.name).len();
+            if crossterm::event::poll(std::time::Duration::from_millis(50))? {
+                match crossterm::event::read()? {
+                    crossterm::event::Event::Key(key) => {
+                        if state.help_visible {
+                            if key.code == crossterm::event::KeyCode::Esc
+                                || key.code == crossterm::event::KeyCode::F(1)
+                            {
+                                state.help_visible = false;
+                            }
+                            continue;
                         }
-                        Action::ToggleValue => {
-                            if let Some(field) = schema.fields.get(state.focused_index) {
-                                if field.widget == WidgetKind::Checkbox {
-                                    let current = state.get_value(&field.name).cloned();
-                                    let new_val = match current {
-                                        Some(Value::Bool(b)) => Value::Bool(!b),
-                                        _ => Value::Bool(true),
-                                    };
-                                    state.set_value(&field.name, new_val);
+                        if state.editing {
+                            handle_edit_key(key, state, schema);
+                        } else {
+                            let action = key_to_action(key, state, schema);
+                            match action {
+                                Action::FocusNext => state.focus_next(schema),
+                                Action::FocusPrev => state.focus_prev(schema),
+                                Action::ToggleEdit => {
+                                    state.editing = true;
+                                    let field = &schema.fields[state.focused_index];
+                                    state.cursor_pos = state.edit_buffer(&field.name).len();
                                 }
+                                Action::ToggleValue => {
+                                    if let Some(field) = schema.fields.get(state.focused_index) {
+                                        if field.widget == WidgetKind::Checkbox {
+                                            let current = state.get_value(&field.name).cloned();
+                                            let new_val = match current {
+                                                Some(Value::Bool(b)) => Value::Bool(!b),
+                                                _ => Value::Bool(true),
+                                            };
+                                            state.set_value(&field.name, new_val);
+                                        }
+                                    }
+                                }
+                                Action::Cancel => return Err(TuiError::Cancelled),
+                                Action::Submit => {
+                                    state.validate(schema);
+                                    if state.errors.is_empty() {
+                                        return Ok(state.clone());
+                                    }
+                                }
+                                Action::ShowHelp => state.help_visible = true,
+                                _ => {}
                             }
                         }
-                        Action::Cancel => return Err(TuiError::Cancelled),
-                        Action::Submit => {
-                            state.validate(schema);
-                            if state.errors.is_empty() {
-                                return Ok(state.clone());
-                            }
-                        }
-                        _ => {}
                     }
+                    crossterm::event::Event::Mouse(mouse) => {
+                        if self.mouse_enabled {
+                            handle_mouse(mouse, state, schema);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
+    }
+}
+
+fn handle_mouse(
+    mouse: crossterm::event::MouseEvent,
+    state: &mut FormState,
+    schema: &TuiSchema,
+) {
+    match mouse.kind {
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+            let row = mouse.row;
+            let field_height: u16 = 3;
+            let clicked_row = row.saturating_sub(4);
+            let field_idx = (clicked_row / field_height) as usize + state.scroll_offset;
+            if field_idx < schema.fields.len() && !schema.fields[field_idx].skip {
+                state.focused_index = field_idx;
+                state.editing = false;
+            }
+        }
+        crossterm::event::MouseEventKind::ScrollUp => {
+            state.focus_prev(schema);
+        }
+        crossterm::event::MouseEventKind::ScrollDown => {
+            state.focus_next(schema);
+        }
+        _ => {}
     }
 }
 
@@ -261,6 +392,7 @@ fn render(
     area: Rect,
     state: &mut FormState,
     schema: &TuiSchema,
+    theme: &Theme,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -271,27 +403,29 @@ fn render(
         ])
         .split(area);
 
-    render_header(f, chunks[0], schema);
-    render_form(f, chunks[1], state, schema);
-    render_footer(f, chunks[2], state, schema);
+    render_header(f, chunks[0], schema, theme);
+    render_form(f, chunks[1], state, schema, theme);
+    render_footer(f, chunks[2], state, schema, theme);
+
+    if state.help_visible {
+        render_help_popup(f, area, theme);
+    }
 }
 
-fn render_header(f: &mut ratatui::Frame, area: Rect, schema: &TuiSchema) {
+fn render_header(f: &mut ratatui::Frame, area: Rect, schema: &TuiSchema, theme: &Theme) {
     use ratatui::widgets::{Block, Borders, Paragraph};
-    use ratatui::style::{Style, Color};
 
     let title = schema.name.clone();
     let desc = schema.description.as_deref().unwrap_or("");
     let text = format!("{}  {}", title, desc);
     let para = Paragraph::new(text)
-        .style(Style::default().fg(Color::Cyan))
+        .style(Style::default().fg(theme.primary))
         .block(Block::default().borders(Borders::ALL).title(" TUI Generator "));
     f.render_widget(para, area);
 }
 
-fn render_form(f: &mut ratatui::Frame, area: Rect, state: &mut FormState, schema: &TuiSchema) {
+fn render_form(f: &mut ratatui::Frame, area: Rect, state: &mut FormState, schema: &TuiSchema, theme: &Theme) {
     use ratatui::widgets::{Block, Borders, Paragraph};
-    use ratatui::style::{Style, Color};
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -315,16 +449,38 @@ fn render_form(f: &mut ratatui::Frame, area: Rect, state: &mut FormState, schema
 
     let scroll = state.scroll_offset.min(total.saturating_sub(1));
 
-    for (vis_idx, field_idx) in (scroll..total).enumerate().take(visible) {
-        let field = &schema.fields[field_idx];
-        let y_offset = (vis_idx as u16) * field_height as u16;
+    let mut current_section: Option<String> = None;
+    let mut y_used: u16 = 0;
 
-        if y_offset + field_height as u16 > inner.height {
+    for field_idx in scroll..total {
+        let field = &schema.fields[field_idx];
+
+        if let Some(ref section_name) = field.section {
+            if current_section.as_ref() != Some(section_name) {
+                current_section = Some(section_name.clone());
+                if y_used < inner.height {
+                    let section_para = Paragraph::new(format!("── {} ──", section_name))
+                        .style(Style::default().fg(theme.section).add_modifier(Modifier::BOLD));
+                    let section_area = Rect {
+                        x: inner.x,
+                        y: inner.y + y_used,
+                        width: inner.width,
+                        height: 1,
+                    };
+                    f.render_widget(section_para, section_area);
+                    y_used += 1;
+                }
+            }
+        }
+
+        let remaining = (inner.height - y_used) as usize;
+        if remaining < field_height {
             break;
         }
 
         let is_focused = field_idx == state.focused_index;
-        render_field(f, inner, y_offset, field, state, is_focused);
+        render_field(f, inner, y_used, field, state, is_focused, theme);
+        y_used += field_height as u16;
     }
 
     // Render validation errors at bottom
@@ -337,7 +493,7 @@ fn render_form(f: &mut ratatui::Frame, area: Rect, state: &mut FormState, schema
             width: inner.width,
             height: 2.min(inner.height),
         };
-        let err_para = Paragraph::new(err_text).style(Style::default().fg(Color::Red));
+        let err_para = Paragraph::new(err_text).style(Style::default().fg(theme.error));
         f.render_widget(err_para, err_area);
     }
 }
@@ -349,17 +505,16 @@ fn render_field(
     field: &tui_generator_core::schema::Field,
     state: &FormState,
     is_focused: bool,
+    theme: &Theme,
 ) {
     use ratatui::widgets::{Paragraph};
-    use ratatui::style::{Style, Color};
 
     let label_style = if is_focused {
-        Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD)
+        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(theme.text)
     };
 
-    // Label
     let required_mark = if field.required { " *" } else { "" };
     let label_text = format!("{}{}", field.label, required_mark);
     let label = Paragraph::new(label_text).style(label_style);
@@ -371,7 +526,6 @@ fn render_field(
     };
     f.render_widget(label, label_area);
 
-    // Widget
     let widget_area = Rect {
         x: parent.x,
         y: parent.y + y_offset + 1,
@@ -380,10 +534,10 @@ fn render_field(
     };
 
     match field.widget {
-        WidgetKind::Checkbox => render_checkbox(f, widget_area, field, state, is_focused),
-        WidgetKind::NumberInput => render_number_input(f, widget_area, field, state, is_focused),
-        WidgetKind::Select => render_select(f, widget_area, field, state, is_focused),
-        _ => render_text_input(f, widget_area, field, state, is_focused),
+        WidgetKind::Checkbox => render_checkbox(f, widget_area, field, state, is_focused, theme),
+        WidgetKind::NumberInput => render_number_input(f, widget_area, field, state, is_focused, theme),
+        WidgetKind::Select => render_select(f, widget_area, field, state, is_focused, theme),
+        _ => render_text_input(f, widget_area, field, state, is_focused, theme),
     }
 }
 
@@ -393,9 +547,9 @@ fn render_text_input(
     field: &tui_generator_core::schema::Field,
     state: &FormState,
     is_focused: bool,
+    theme: &Theme,
 ) {
     use ratatui::widgets::{Paragraph, Block, Borders};
-    use ratatui::style::{Style, Color};
 
     let value_str = match state.get_value(&field.name) {
         Some(Value::String(s)) => s.clone(),
@@ -420,9 +574,9 @@ fn render_text_input(
     };
 
     let border_style = if is_focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme.border_focused)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.border_unfocused)
     };
 
     let block = Block::default()
@@ -432,7 +586,6 @@ fn render_text_input(
     let para = Paragraph::new(display).block(block);
     f.render_widget(para, area);
 
-    // Show cursor in edit mode
     if is_focused && state.editing {
         let cursor_x = area.x + 1 + (state.cursor_pos as u16).min(area.width.saturating_sub(2));
         f.set_cursor_position((cursor_x, area.y + 1));
@@ -445,9 +598,9 @@ fn render_number_input(
     field: &tui_generator_core::schema::Field,
     state: &FormState,
     is_focused: bool,
+    theme: &Theme,
 ) {
     use ratatui::widgets::Paragraph;
-    use ratatui::style::{Style, Color};
 
     let value_str = match state.get_value(&field.name) {
         Some(Value::Integer(n)) => n.to_string(),
@@ -462,7 +615,7 @@ fn render_number_input(
     };
 
     let style = if is_focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme.primary)
     } else {
         Style::default()
     };
@@ -482,9 +635,9 @@ fn render_checkbox(
     field: &tui_generator_core::schema::Field,
     state: &FormState,
     is_focused: bool,
+    theme: &Theme,
 ) {
     use ratatui::widgets::Paragraph;
-    use ratatui::style::{Style, Color};
 
     let checked = match state.get_value(&field.name) {
         Some(Value::Bool(b)) => *b,
@@ -496,7 +649,7 @@ fn render_checkbox(
     let text = format!("{} [{}] {}", marker, check, field.label);
 
     let style = if is_focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme.primary)
     } else {
         Style::default()
     };
@@ -511,9 +664,9 @@ fn render_select(
     field: &tui_generator_core::schema::Field,
     state: &FormState,
     is_focused: bool,
+    theme: &Theme,
 ) {
     use ratatui::widgets::{Paragraph};
-    use ratatui::style::{Style, Color};
 
     let current = match state.get_value(&field.name) {
         Some(Value::String(s)) => s.clone(),
@@ -521,7 +674,6 @@ fn render_select(
     };
 
     let display = if is_focused && state.editing {
-        // Show selection cursor
         let idx = state.select_index;
         field.options.iter().enumerate().map(|(i, opt)| {
             let marker = if i == idx { "▸ " } else { "  " };
@@ -532,7 +684,7 @@ fn render_select(
     };
 
     let style = if is_focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme.primary)
     } else {
         Style::default()
     };
@@ -546,9 +698,9 @@ fn render_footer(
     area: Rect,
     state: &FormState,
     schema: &TuiSchema,
+    theme: &Theme,
 ) {
     use ratatui::widgets::{Block, Borders, Paragraph};
-    use ratatui::style::{Style, Color};
 
     let field = &schema.fields[state.focused_index];
 
@@ -569,13 +721,55 @@ fn render_footer(
 
     let text = format!("{}{}", hints, error_indicator);
     let style = if !state.errors.is_empty() {
-        Style::default().fg(Color::Red)
+        Style::default().fg(theme.error)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.border_unfocused)
     };
 
     let para = Paragraph::new(text)
         .style(style)
         .block(Block::default().borders(Borders::ALL).title(" Help "));
     f.render_widget(para, area);
+}
+
+fn render_help_popup(f: &mut ratatui::Frame, area: Rect, theme: &Theme) {
+    use ratatui::widgets::{Block, Borders, Paragraph, Clear};
+
+    let w = 50.min(area.width);
+    let h = 14.min(area.height);
+    let x = (area.width - w) / 2;
+    let y = (area.height - h) / 2;
+
+    let popup_area = Rect { x, y, width: w, height: h };
+
+    f.render_widget(Clear, popup_area);
+
+    let help_text = "\
+Keyboard Shortcuts
+
+↑↓ / j/k     Navigate fields
+Enter        Edit field / Confirm
+Space        Toggle checkbox
+Esc          Cancel / Quit
+q            Quit
+Tab          Next field
+Shift+Tab    Previous field
+F1           Toggle this help
+
+Mouse (if enabled)
+Click        Focus field
+Scroll       Navigate fields
+
+Press Esc or F1 to close";
+
+    let para = Paragraph::new(help_text)
+        .style(Style::default().fg(theme.text))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.primary))
+                .title(" Help (F1/Esc to close) "),
+        );
+
+    f.render_widget(para, popup_area);
 }

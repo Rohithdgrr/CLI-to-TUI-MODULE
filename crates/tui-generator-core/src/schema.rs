@@ -22,6 +22,7 @@ pub struct Field {
     pub widget: WidgetKind,
     pub constraints: Vec<Constraint>,
     pub options: Vec<String>,
+    pub skip: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -41,6 +41,7 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let (widget_ts, is_option) = determine_widget(field, &ty_str);
         let (default_ts, required) = extract_default(field, &ty_str, is_option);
         let options = extract_options(field);
+        let skip = extract_skip(field);
 
         let options_tokens: Vec<proc_macro2::TokenStream> = options.iter()
             .map(|o| quote! { #o.to_string() })
@@ -56,11 +57,14 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 widget: #widget_ts,
                 constraints: vec![],
                 options: vec![#(#options_tokens),*],
+                skip: #skip,
             }
         });
 
-        from_value_arms.push(gen_from_arm(field_name, &ty_str, is_option));
-        to_value_arms.push(gen_to_arm(field_name, &ty_str));
+        from_value_arms.push(gen_from_arm(field_name, &ty_str, is_option, skip));
+        if !skip {
+            to_value_arms.push(gen_to_arm(field_name, &ty_str));
+        }
     }
 
     let title_str = title.unwrap_or_else(|| name.to_string());
@@ -254,6 +258,11 @@ fn type_default(ty: &str) -> Option<proc_macro2::TokenStream> {
     }
 }
 
+fn extract_skip(field: &syn::Field) -> bool {
+    let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
+    metas.iter().any(|m| matches!(m, syn::Meta::Path(p) if p.is_ident("skip")))
+}
+
 fn extract_options(field: &syn::Field) -> Vec<String> {
     let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
     find_meta_value(&metas, "options")
@@ -263,8 +272,11 @@ fn extract_options(field: &syn::Field) -> Vec<String> {
 
 // --- Code generation helpers ---
 
-fn gen_from_arm(name: &syn::Ident, ty_str: &str, is_option: bool) -> proc_macro2::TokenStream {
+fn gen_from_arm(name: &syn::Ident, ty_str: &str, is_option: bool, skip: bool) -> proc_macro2::TokenStream {
     let ns = name.to_string();
+    if skip {
+        return quote! { #name: Default::default() };
+    }
     if is_option {
         let inner = extract_option_inner(ty_str);
         let conv = make_converter(&inner, true);
@@ -400,7 +412,7 @@ fn gen_to_arm(name: &syn::Ident, ty_str: &str) -> proc_macro2::TokenStream {
             quote! { ::tui_generator::core::value::Value::Float(self.#name as f64) },
         s if s.contains("PathBuf") || s == "Path" =>
             quote! { ::tui_generator::core::value::Value::Path(self.#name.clone()) },
-        _ => quote! { ::tui_generator::core::value::Value::String(format!("{:?}", self.#name)) },
+        _ => quote! { ::tui_generator::core::value::Value::String(self.#name.to_string()) },
     };
     quote! { map.insert(#ns.to_string(), #val_expr); }
 }

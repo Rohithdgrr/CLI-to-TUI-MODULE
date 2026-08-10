@@ -58,7 +58,7 @@ impl From<i32> for Value {
 
 impl From<u64> for Value {
     fn from(u: u64) -> Self {
-        Value::Integer(u as i64)
+        Value::Integer(u.min(i64::MAX as u64) as i64)
     }
 }
 
@@ -70,7 +70,7 @@ impl From<u32> for Value {
 
 impl From<usize> for Value {
     fn from(u: usize) -> Self {
-        Value::Integer(u as i64)
+        Value::Integer(u.min(i64::MAX as usize) as i64)
     }
 }
 

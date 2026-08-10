@@ -80,8 +80,8 @@ fn run_loop(
                 } else {
                     let action = key_to_action(key, state, schema);
                     match action {
-                        Action::FocusNext => state.focus_next(schema.fields.len()),
-                        Action::FocusPrev => state.focus_prev(schema.fields.len()),
+                        Action::FocusNext => state.focus_next(schema),
+                        Action::FocusPrev => state.focus_prev(schema),
                         Action::ToggleEdit => {
                             state.editing = true;
                             let field = &schema.fields[state.focused_index];

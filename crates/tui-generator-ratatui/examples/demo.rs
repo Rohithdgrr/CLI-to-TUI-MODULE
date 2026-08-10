@@ -18,6 +18,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::TextInput,
                 constraints: vec![],
                 options: vec![],
+                skip: false,
             },
             Field {
                 name: "output".to_string(),
@@ -28,6 +29,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::TextInput,
                 constraints: vec![],
                 options: vec![],
+                skip: false,
             },
             Field {
                 name: "threads".to_string(),
@@ -38,6 +40,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::NumberInput,
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(64.0)],
                 options: vec![],
+                skip: false,
             },
             Field {
                 name: "format".to_string(),
@@ -53,6 +56,7 @@ fn build_schema() -> TuiSchema {
                     "webp".to_string(),
                     "gif".to_string(),
                 ],
+                skip: false,
             },
             Field {
                 name: "quality".to_string(),
@@ -63,6 +67,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::NumberInput,
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(100.0)],
                 options: vec![],
+                skip: false,
             },
             Field {
                 name: "verbose".to_string(),
@@ -73,6 +78,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::Checkbox,
                 constraints: vec![],
                 options: vec![],
+                skip: false,
             },
             Field {
                 name: "overwrite".to_string(),
@@ -83,6 +89,7 @@ fn build_schema() -> TuiSchema {
                 widget: WidgetKind::Checkbox,
                 constraints: vec![],
                 options: vec![],
+                skip: false,
             },
         ],
         subcommands: vec![],

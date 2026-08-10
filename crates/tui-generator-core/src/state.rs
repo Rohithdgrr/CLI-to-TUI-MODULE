@@ -42,19 +42,29 @@ impl FormState {
         self.values.get(name)
     }
 
-    pub fn focus_next(&mut self, total_fields: usize) {
-        self.focused_index = (self.focused_index + 1) % total_fields;
+    pub fn focus_next(&mut self, schema: &TuiSchema) {
+        let total = schema.fields.len();
+        if total == 0 { return; }
+        let start = self.focused_index;
+        let mut idx = (start + 1) % total;
+        while idx != start && schema.fields[idx].skip {
+            idx = (idx + 1) % total;
+        }
+        self.focused_index = idx;
         self.editing = false;
         self.cursor_pos = 0;
         self.select_index = 0;
     }
 
-    pub fn focus_prev(&mut self, total_fields: usize) {
-        self.focused_index = if self.focused_index == 0 {
-            total_fields - 1
-        } else {
-            self.focused_index - 1
-        };
+    pub fn focus_prev(&mut self, schema: &TuiSchema) {
+        let total = schema.fields.len();
+        if total == 0 { return; }
+        let start = self.focused_index;
+        let mut idx = if start == 0 { total - 1 } else { start - 1 };
+        while idx != start && schema.fields[idx].skip {
+            idx = if idx == 0 { total - 1 } else { idx - 1 };
+        }
+        self.focused_index = idx;
         self.editing = false;
         self.cursor_pos = 0;
         self.select_index = 0;
@@ -90,5 +100,75 @@ impl FormState {
             _ => Value::String(buffer),
         };
         self.values.insert(field_name.to_string(), value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{TuiSchema, Field};
+    use crate::widget::WidgetKind;
+
+    fn test_schema_with_skips(skips: Vec<bool>) -> TuiSchema {
+        TuiSchema {
+            name: "Test".into(),
+            description: None,
+            fields: skips.iter().enumerate().map(|(i, &skip)| Field {
+                name: format!("f{}", i),
+                label: format!("Field {}", i),
+                description: None,
+                required: false,
+                default: None,
+                widget: WidgetKind::TextInput,
+                constraints: vec![],
+                options: vec![],
+                skip,
+            }).collect(),
+            subcommands: vec![],
+        }
+    }
+
+    #[test]
+    fn test_focus_next_skips_hidden() {
+        let schema = test_schema_with_skips(vec![false, true, false]);
+        let mut state = FormState::from_schema(&schema);
+        assert_eq!(state.focused_index, 0);
+        state.focus_next(&schema);
+        assert_eq!(state.focused_index, 2);
+    }
+
+    #[test]
+    fn test_focus_prev_skips_hidden() {
+        let schema = test_schema_with_skips(vec![false, true, false]);
+        let mut state = FormState::from_schema(&schema);
+        state.focused_index = 2;
+        state.focus_prev(&schema);
+        assert_eq!(state.focused_index, 0);
+    }
+
+    #[test]
+    fn test_focus_next_all_visible() {
+        let schema = test_schema_with_skips(vec![false, false, false]);
+        let mut state = FormState::from_schema(&schema);
+        state.focus_next(&schema);
+        assert_eq!(state.focused_index, 1);
+        state.focus_next(&schema);
+        assert_eq!(state.focused_index, 2);
+    }
+
+    #[test]
+    fn test_set_edit_buffer_number() {
+        let schema = test_schema_with_skips(vec![false]);
+        let mut state = FormState::from_schema(&schema);
+        state.set_edit_buffer("f0", "42".into(), WidgetKind::NumberInput);
+        assert_eq!(state.get_value("f0"), Some(&Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_set_edit_buffer_checkbox() {
+        let schema = test_schema_with_skips(vec![false]);
+        let mut state = FormState::from_schema(&schema);
+        state.set_edit_buffer("f0", "true".into(), WidgetKind::Checkbox);
+        assert_eq!(state.get_value("f0"), Some(&Value::Bool(true)));
     }
 }

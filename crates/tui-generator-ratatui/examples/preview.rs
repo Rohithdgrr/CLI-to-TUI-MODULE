@@ -17,6 +17,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 description: Some("Path to input image".to_string()),
+                skip: false,
             },
             Field {
                 name: "output".to_string(),
@@ -27,6 +28,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 description: Some("Path to output image".to_string()),
+                skip: false,
             },
             Field {
                 name: "threads".to_string(),
@@ -37,6 +39,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(64.0)],
                 options: vec![],
                 description: Some("Number of processing threads".to_string()),
+                skip: false,
             },
             Field {
                 name: "format".to_string(),
@@ -47,6 +50,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec!["png".into(), "jpg".into(), "webp".into(), "gif".into()],
                 description: Some("Image output format".to_string()),
+                skip: false,
             },
             Field {
                 name: "quality".to_string(),
@@ -57,6 +61,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(100.0)],
                 options: vec![],
                 description: Some("Compression quality (1-100)".to_string()),
+                skip: false,
             },
             Field {
                 name: "verbose".to_string(),
@@ -67,6 +72,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 description: Some("Enable verbose output".to_string()),
+                skip: false,
             },
             Field {
                 name: "overwrite".to_string(),
@@ -77,6 +83,7 @@ fn build_schema() -> TuiSchema {
                 constraints: vec![],
                 options: vec![],
                 description: Some("Overwrite existing files".to_string()),
+                skip: false,
             },
         ],
         subcommands: vec![],

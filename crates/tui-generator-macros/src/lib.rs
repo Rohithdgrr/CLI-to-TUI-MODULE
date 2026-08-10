@@ -43,6 +43,7 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let options = extract_options(field);
         let skip = extract_skip(field);
         let section = extract_section(field);
+        let readonly = extract_readonly(field);
 
         let options_tokens: Vec<proc_macro2::TokenStream> = options.iter()
             .map(|o| quote! { #o.to_string() })
@@ -65,6 +66,7 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 options: vec![#(#options_tokens),*],
                 skip: #skip,
                 section: #section_ts,
+                readonly: #readonly,
             }
         });
 
@@ -268,6 +270,11 @@ fn type_default(ty: &str) -> Option<proc_macro2::TokenStream> {
 fn extract_skip(field: &syn::Field) -> bool {
     let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
     metas.iter().any(|m| matches!(m, syn::Meta::Path(p) if p.is_ident("skip")))
+}
+
+fn extract_readonly(field: &syn::Field) -> bool {
+    let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
+    metas.iter().any(|m| matches!(m, syn::Meta::Path(p) if p.is_ident("readonly")))
 }
 
 fn extract_section(field: &syn::Field) -> Option<String> {

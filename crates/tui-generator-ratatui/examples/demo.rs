@@ -20,6 +20,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "output".to_string(),
@@ -32,6 +33,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "threads".to_string(),
@@ -44,6 +46,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "format".to_string(),
@@ -61,6 +64,7 @@ fn build_schema() -> TuiSchema {
                 ],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "quality".to_string(),
@@ -73,6 +77,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "verbose".to_string(),
@@ -85,6 +90,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
             Field {
                 name: "overwrite".to_string(),
@@ -97,6 +103,7 @@ fn build_schema() -> TuiSchema {
                 options: vec![],
                 skip: false,
                 section: None,
+                readonly: false,
             },
         ],
         subcommands: vec![],

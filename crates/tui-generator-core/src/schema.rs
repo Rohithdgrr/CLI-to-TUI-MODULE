@@ -24,6 +24,7 @@ pub struct Field {
     pub options: Vec<String>,
     pub skip: bool,
     pub section: Option<String>,
+    pub readonly: bool,
 }
 
 #[derive(Debug, Clone)]

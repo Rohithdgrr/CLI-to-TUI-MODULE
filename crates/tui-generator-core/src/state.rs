@@ -145,6 +145,7 @@ mod tests {
                 options: vec![],
                 skip,
                 section: None,
+                readonly: false,
             }).collect(),
             subcommands: vec![],
         }

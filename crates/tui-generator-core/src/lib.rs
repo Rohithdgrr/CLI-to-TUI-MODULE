@@ -29,6 +29,7 @@ mod tests {
             options: vec![],
             skip: false,
             section: None,
+            readonly: false,
         }
     }
 
@@ -139,6 +140,7 @@ mod tests {
             options: vec![],
             skip: false,
             section: Some("Network".into()),
+            readonly: false,
         };
         assert_eq!(field_with_section.section, Some("Network".into()));
     }
@@ -156,6 +158,7 @@ mod tests {
             options: vec![],
             skip: true,
             section: None,
+            readonly: false,
         };
         assert!(field.skip);
     }

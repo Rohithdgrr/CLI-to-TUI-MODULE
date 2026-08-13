@@ -468,8 +468,21 @@ fn render_header(f: &mut ratatui::Frame, area: Rect, schema: &TuiSchema, theme: 
     let title = schema.name.clone();
     let desc = schema.description.as_deref().unwrap_or("");
     let text = format!("{}  {}", title, desc);
+
+    // Pake-style: dark header background with orange accent line (hardcoded orange #FF9F1C)
+    let orange = Color::Rgb(255, 159, 28);
+    let top_bar = Paragraph::new(" ")
+        .style(Style::default().bg(orange));
+    let top_bar_area = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: 1,
+    };
+    f.render_widget(top_bar, top_bar_area);
+
     let para = Paragraph::new(text)
-        .style(Style::default().fg(theme.primary))
+        .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD))
         .block(Block::default().borders(Borders::ALL).title(" TUI Generator "));
     f.render_widget(para, area);
 }

@@ -30,7 +30,6 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let field_name = field.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
         let ty = &field.ty;
-        let ty_str = type_to_string(ty);
 
         let label = extract_label(field).unwrap_or_else(|| to_title_case(&field_name_str));
         let doc = extract_doc_comment(field);
@@ -38,8 +37,8 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             Some(d) => quote! { Some(#d.to_string()) },
             None => quote! { None },
         };
-        let (widget_ts, is_option) = determine_widget(field, &ty_str);
-        let (default_ts, required) = extract_default(field, &ty_str, is_option);
+        let (widget_ts, is_option) = determine_widget(field, &ty);
+        let (default_ts, required) = extract_default(field, &ty, is_option);
         let options = extract_options(field);
         let skip = extract_skip(field);
         let section = extract_section(field);
@@ -70,9 +69,9 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             }
         });
 
-        from_value_arms.push(gen_from_arm(field_name, &ty_str, is_option, skip));
+        from_value_arms.push(gen_from_arm(field_name, ty, is_option, skip));
         if !skip {
-            to_value_arms.push(gen_to_arm(field_name, &ty_str));
+            to_value_arms.push(gen_to_arm(field_name, &ty));
         }
     }
 
@@ -106,7 +105,9 @@ fn impl_tui(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         impl #name {
             pub fn parse_or_tui() -> Result<Self, ::tui_generator::core::error::TuiError> {
                 let args: Vec<String> = std::env::args().skip(1).collect();
-                if args.iter().any(|a| a == "--tui") {
+                // Fix close bug: open TUI by default unless CLI args explicitly provided
+                // This prevents 1-second exit when running in a directory
+                if args.is_empty() || args.iter().any(|a| a == "--tui") {
                     Self::run_tui()
                 } else {
                     Ok(<Self as ::tui_generator::clap::Parser>::parse())
@@ -176,16 +177,101 @@ fn extract_doc_comment(field: &syn::Field) -> Option<String> {
     if docs.is_empty() { None } else { Some(docs.join(" ")) }
 }
 
-fn determine_widget(field: &syn::Field, ty_str: &str) -> (proc_macro2::TokenStream, bool) {
+fn determine_widget(field: &syn::Field, ty: &syn::Type) -> (proc_macro2::TokenStream, bool) {
     let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
+    let is_opt = is_option_type(ty);
     if let Some(w) = find_meta_value(&metas, "widget") {
         let widget = widget_from_str(&w);
-        let is_opt = ty_str.starts_with("Option <");
         return (widget, is_opt);
     }
-    let is_opt = ty_str.starts_with("Option <");
-    let inner = if is_opt { extract_option_inner(ty_str) } else { ty_str.to_string() };
-    (widget_for_type(&inner), is_opt)
+    if !extract_options(field).is_empty() {
+        return (
+            quote! { ::tui_generator::core::widget::WidgetKind::Select },
+            is_opt,
+        );
+    }
+    type_to_widget_kind(ty)
+}
+
+fn to_title_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = true;
+    for c in s.chars() {
+        if c == '_' || c == '-' {
+            result.push(' ');
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.extend(c.to_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn is_option_type(ty: &syn::Type) -> bool {
+    last_type_ident(ty).map_or(false, |i| i == "Option")
+}
+
+fn is_vec_type(ty: &syn::Type) -> bool {
+    last_type_ident(ty).map_or(false, |i| i == "Vec")
+}
+
+fn last_type_ident(ty: &syn::Type) -> Option<String> {
+    if let syn::Type::Path(type_path) = ty {
+        type_path.path.segments.last().map(|s| s.ident.to_string())
+    } else {
+        None
+    }
+}
+
+fn first_generic_arg(ty: &syn::Type) -> Option<&syn::Type> {
+    if let syn::Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                    return Some(inner);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    if is_option_type(ty) {
+        first_generic_arg(ty)
+    } else {
+        None
+    }
+}
+
+fn type_to_widget_kind(ty: &syn::Type) -> (proc_macro2::TokenStream, bool) {
+    let is_opt = is_option_type(ty);
+    let mut effective: &syn::Type = ty;
+    if is_opt {
+        effective = extract_option_inner_type(ty).unwrap_or(ty);
+    }
+    if is_vec_type(effective) {
+        return (
+            quote! { ::tui_generator::core::widget::WidgetKind::MultiSelect },
+            is_opt,
+        );
+    }
+    let widget = match last_type_ident(effective).as_deref() {
+        Some("bool") => quote! { ::tui_generator::core::widget::WidgetKind::Checkbox },
+        Some("PathBuf") | Some("Path") => {
+            quote! { ::tui_generator::core::widget::WidgetKind::PathInput }
+        }
+        Some("u8") | Some("u16") | Some("u32") | Some("u64") | Some("usize")
+        | Some("i8") | Some("i16") | Some("i32") | Some("i64")
+        | Some("f32") | Some("f64") => {
+            quote! { ::tui_generator::core::widget::WidgetKind::NumberInput }
+        }
+        _ => quote! { ::tui_generator::core::widget::WidgetKind::TextInput },
+    };
+    (widget, is_opt)
 }
 
 fn widget_from_str(s: &str) -> proc_macro2::TokenStream {
@@ -205,27 +291,7 @@ fn widget_from_str(s: &str) -> proc_macro2::TokenStream {
     }
 }
 
-fn widget_for_type(ty: &str) -> proc_macro2::TokenStream {
-    match ty {
-        "bool" => quote! { ::tui_generator::core::widget::WidgetKind::Checkbox },
-        "u8"|"u16"|"u32"|"u64"|"usize"|"i8"|"i16"|"i32"|"i64"|"f32"|"f64" =>
-            quote! { ::tui_generator::core::widget::WidgetKind::NumberInput },
-        s if s.contains("PathBuf") || s == "Path" || s.ends_with("::path::PathBuf") || s.ends_with("::path::Path") =>
-            quote! { ::tui_generator::core::widget::WidgetKind::PathInput },
-        _ => quote! { ::tui_generator::core::widget::WidgetKind::TextInput },
-    }
-}
-
-fn extract_option_inner(ty_str: &str) -> String {
-    let s = ty_str.trim();
-    if s.starts_with("Option <") && s.ends_with('>') {
-        s[8..s.len()-1].trim().to_string()
-    } else {
-        s.to_string()
-    }
-}
-
-fn extract_default(field: &syn::Field, ty_str: &str, is_option: bool) -> (proc_macro2::TokenStream, bool) {
+fn extract_default(field: &syn::Field, ty: &syn::Type, is_option: bool) -> (proc_macro2::TokenStream, bool) {
     let metas: Vec<Meta> = field.attrs.iter().flat_map(parse_tui_attrs).collect();
     for key in &["default", "default_value_t", "default_value"] {
         if let Some(val) = find_meta_value(&metas, key) {
@@ -235,7 +301,7 @@ fn extract_default(field: &syn::Field, ty_str: &str, is_option: bool) -> (proc_m
     if is_option {
         (quote! { None }, false)
     } else {
-        match type_default(ty_str) {
+        match type_default_from_type(ty) {
             Some(d) => (quote! { Some(#d) }, false),
             None => (quote! { None }, true),
         }
@@ -254,16 +320,27 @@ fn make_value_ts(val: &str) -> proc_macro2::TokenStream {
     quote! { Some(::tui_generator::core::value::Value::String(#val.to_string())) }
 }
 
-fn type_default(ty: &str) -> Option<proc_macro2::TokenStream> {
-    match ty {
-        "bool" => Some(quote! { ::tui_generator::core::value::Value::Bool(false) }),
-        "u8"|"u16"|"u32"|"u64"|"usize"|"i8"|"i16"|"i32"|"i64" =>
-            Some(quote! { ::tui_generator::core::value::Value::Integer(0) }),
-        "f32"|"f64" => Some(quote! { ::tui_generator::core::value::Value::Float(0.0) }),
-        "String"|"str" => Some(quote! { ::tui_generator::core::value::Value::String(String::new()) }),
-        s if s.contains("PathBuf") || s == "Path" =>
-            Some(quote! { ::tui_generator::core::value::Value::Path(std::path::PathBuf::new()) }),
-        _ => None,
+fn type_default_from_type(ty: &syn::Type) -> Option<proc_macro2::TokenStream> {
+    if let syn::Type::Path(type_path) = ty {
+        let ident = type_path.path.segments.last().map(|s| s.ident.to_string());
+        match ident.as_deref() {
+            Some("bool") => Some(quote! { ::tui_generator::core::value::Value::Bool(false) }),
+            Some("u8") | Some("u16") | Some("u32") | Some("u64") | Some("usize")
+            | Some("i8") | Some("i16") | Some("i32") | Some("i64") => {
+                Some(quote! { ::tui_generator::core::value::Value::Integer(0) })
+            }
+            Some("f32") | Some("f64") => Some(quote! { ::tui_generator::core::value::Value::Float(0.0) }),
+            Some("String") | Some("str") => Some(quote! { ::tui_generator::core::value::Value::String(String::new()) }),
+            Some("PathBuf") | Some("Path") => {
+                Some(quote! { ::tui_generator::core::value::Value::Path(std::path::PathBuf::new()) })
+            }
+            Some("Vec") => {
+                Some(quote! { ::tui_generator::core::value::Value::List(vec![]) })
+            }
+            _ => None,
+        }
+    } else {
+        None
     }
 }
 
@@ -291,14 +368,14 @@ fn extract_options(field: &syn::Field) -> Vec<String> {
 
 // --- Code generation helpers ---
 
-fn gen_from_arm(name: &syn::Ident, ty_str: &str, is_option: bool, skip: bool) -> proc_macro2::TokenStream {
+fn gen_from_arm(name: &syn::Ident, ty: &syn::Type, is_option: bool, skip: bool) -> proc_macro2::TokenStream {
     let ns = name.to_string();
     if skip {
         return quote! { #name: Default::default() };
     }
     if is_option {
-        let inner = extract_option_inner(ty_str);
-        let conv = make_converter(&inner, true);
+        let inner = extract_option_inner_type(ty).unwrap_or(ty);
+        let conv = make_converter_from_type(&inner, true);
         return quote! {
             #name: match values.get(#ns) {
                 Some(v) => #conv,
@@ -306,7 +383,7 @@ fn gen_from_arm(name: &syn::Ident, ty_str: &str, is_option: bool, skip: bool) ->
             }
         };
     }
-    let conv = make_converter(ty_str, false);
+    let conv = make_converter_from_type(ty, false);
     quote! {
         #name: match values.get(#ns) {
             Some(v) => #conv?,
@@ -317,97 +394,118 @@ fn gen_from_arm(name: &syn::Ident, ty_str: &str, is_option: bool, skip: bool) ->
     }
 }
 
-fn make_converter(ty: &str, wrap_option: bool) -> proc_macro2::TokenStream {
-    let err_msg = format!("expected {}", ty);
+fn make_converter_from_type(ty: &syn::Type, wrap_option: bool) -> proc_macro2::TokenStream {
+    let err_msg = format!("expected proper type");
 
     let inner = match ty {
-        "String"|"str" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::String(s) => Ok(s.clone()),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+        syn::Type::Path(type_path) => {
+            let ident = type_path.path.segments.last().map(|s| s.ident.to_string());
+            match ident.as_deref() {
+                Some("String") | Some("str") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::String(s) => Ok(s.clone()),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("bool") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Bool(b) => Ok(*b),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("u8") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u8),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("u16") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u16),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("u32") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u32),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("u64") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u64),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("usize") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as usize),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("i8") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i8),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("i16") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i16),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("i32") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i32),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("i64") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("f32") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Float(f) => Ok(*f as f32),
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as f32),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("f64") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Float(f) => Ok(*f),
+                        ::tui_generator::core::value::Value::Integer(n) => Ok(*n as f64),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("PathBuf") | Some("Path") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::Path(p) => Ok(p.clone()),
+                        ::tui_generator::core::value::Value::String(s) => Ok(std::path::PathBuf::from(s)),
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                Some("Vec") => quote! {
+                    match v {
+                        ::tui_generator::core::value::Value::List(items) => {
+                            Ok(items.iter().filter_map(|item| {
+                                match item {
+                                    ::tui_generator::core::value::Value::String(s) => Some(s.clone()),
+                                    _ => None,
+                                }
+                            }).collect())
+                        }
+                        _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
+                    }
+                },
+                _ => quote! {
+                    Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into()))
+                },
             }
-        },
-        "bool" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Bool(b) => Ok(*b),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "u8" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u8),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "u16" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u16),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "u32" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u32),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "u64" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as u64),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "usize" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as usize),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "i8" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i8),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "i16" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i16),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "i32" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as i32),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "i64" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "f32" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Float(f) => Ok(*f as f32),
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as f32),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        "f64" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Float(f) => Ok(*f),
-                ::tui_generator::core::value::Value::Integer(n) => Ok(*n as f64),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
-        s if s.contains("PathBuf") || s == "Path" => quote! {
-            match v {
-                ::tui_generator::core::value::Value::Path(p) => Ok(p.clone()),
-                ::tui_generator::core::value::Value::String(s) => Ok(std::path::PathBuf::from(s)),
-                _ => Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into())),
-            }
-        },
+        }
         _ => quote! {
             Err(::tui_generator::core::error::TuiError::ConversionError(#err_msg.into()))
         },
@@ -420,37 +518,37 @@ fn make_converter(ty: &str, wrap_option: bool) -> proc_macro2::TokenStream {
     }
 }
 
-fn gen_to_arm(name: &syn::Ident, ty_str: &str) -> proc_macro2::TokenStream {
+fn gen_to_arm(name: &syn::Ident, ty: &syn::Type) -> proc_macro2::TokenStream {
     let ns = name.to_string();
-    let val_expr = match ty_str {
-        "String"|"str" => quote! { ::tui_generator::core::value::Value::String(self.#name.clone()) },
-        "bool" => quote! { ::tui_generator::core::value::Value::Bool(self.#name) },
-        "u8"|"u16"|"u32"|"u64"|"usize"|"i8"|"i16"|"i32"|"i64" =>
-            quote! { ::tui_generator::core::value::Value::Integer(self.#name as i64) },
-        "f32"|"f64" =>
-            quote! { ::tui_generator::core::value::Value::Float(self.#name as f64) },
-        s if s.contains("PathBuf") || s == "Path" =>
-            quote! { ::tui_generator::core::value::Value::Path(self.#name.clone()) },
+    let val_expr = match ty {
+        syn::Type::Path(type_path) => {
+            let ident = type_path.path.segments.last().map(|s| s.ident.to_string());
+            match ident.as_deref() {
+                Some("String") | Some("str") => {
+                    quote! { ::tui_generator::core::value::Value::String(self.#name.clone()) }
+                }
+                Some("bool") => quote! { ::tui_generator::core::value::Value::Bool(self.#name) },
+                Some("u8") | Some("u16") | Some("u32") | Some("u64") | Some("usize")
+                | Some("i8") | Some("i16") | Some("i32") | Some("i64") => {
+                    quote! { ::tui_generator::core::value::Value::Integer(self.#name as i64) }
+                }
+                Some("f32") | Some("f64") => {
+                    quote! { ::tui_generator::core::value::Value::Float(self.#name as f64) }
+                }
+                Some("PathBuf") | Some("Path") => {
+                    quote! { ::tui_generator::core::value::Value::Path(self.#name.clone()) }
+                }
+                Some("Vec") => {
+                    quote! {
+                        ::tui_generator::core::value::Value::List(
+                            self.#name.iter().map(|s| ::tui_generator::core::value::Value::String(s.clone())).collect()
+                        )
+                    }
+                }
+                _ => quote! { ::tui_generator::core::value::Value::String(self.#name.to_string()) },
+            }
+        }
         _ => quote! { ::tui_generator::core::value::Value::String(self.#name.to_string()) },
     };
     quote! { map.insert(#ns.to_string(), #val_expr); }
-}
-
-// --- Utility functions ---
-
-fn type_to_string(ty: &syn::Type) -> String {
-    quote!(#ty).to_string()
-}
-
-fn to_title_case(s: &str) -> String {
-    s.split('_')
-        .map(|w| {
-            let mut c = w.chars();
-            match c.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }

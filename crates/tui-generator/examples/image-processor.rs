@@ -34,16 +34,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test mode selection
     if args.contains(&"--test".to_string()) {
-        run_tests()?;
-    } else {
-        let cli = Cli::parse_or_tui()?;
-        println!("--- Submitted Configuration ---");
-        println!("Input:    {:?}", cli.input);
-        println!("Output:   {:?}", cli.output);
-        println!("Threads:  {}", cli.threads);
-        println!("Verbose:  {}", cli.verbose);
-        println!("Format:   {}", cli.format);
+        return run_tests();
     }
+
+    // Auto-scan cwd for scripts (Pake-style) - fix close bug: always open TUI
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let scripts: Vec<String> = std::fs::read_dir(&cwd).map(|rd| {
+        rd.filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".py") || n.ends_with(".sh") || n.ends_with(".js") || n.contains("image-processor"))
+            .collect::<Vec<String>>()
+    }).unwrap_or_default();
+
+    println!("CWD: {} | Scripts found: {:?}", cwd.display(), scripts);
+    let cli = Cli::parse_or_tui()?;
+    println!("--- Submitted Configuration ---");
+    println!("Input:    {:?}", cli.input);
+    println!("Output:   {:?}", cli.output);
+    println!("Threads:  {}", cli.threads);
+    println!("Verbose:  {}", cli.verbose);
+    println!("Format:   {}", cli.format);
+    println!("CWD scripts: {:?}", scripts);
 
     Ok(())
 }
@@ -83,7 +94,7 @@ fn run_tests() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(schema.fields[0].widget, WidgetKind::PathInput);   // PathBuf
     assert_eq!(schema.fields[2].widget, WidgetKind::NumberInput); // usize
     assert_eq!(schema.fields[3].widget, WidgetKind::Checkbox);    // bool
-    assert_eq!(schema.fields[4].widget, WidgetKind::TextInput);   // String
+    assert_eq!(schema.fields[4].widget, WidgetKind::Select);      // String with options -> Select
     println!("PASS");
 
     // Test 6: Required fields

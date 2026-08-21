@@ -6,6 +6,7 @@ members = [
     "crates/tui-generator-clap",
     "crates/tui-generator-ratatui",
     "crates/tui-generator",
+    "crates/tui-generator-cli",
 ]
 
 [workspace.package]

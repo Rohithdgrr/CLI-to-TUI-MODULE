@@ -32,10 +32,25 @@ pub fn validate(schema: &[super::schema::Field], values: &std::collections::Hash
     for field in schema {
         let value = values.get(&field.name);
 
+        let is_missing = value.is_none()
+            || matches!(value, Some(super::value::Value::None))
+            || matches!(value, Some(super::value::Value::String(s)) if s.is_empty());
+
+        if field.required && is_missing {
+            let already = field.constraints.iter().any(|c| matches!(c, Constraint::Required));
+            if !already {
+                errors.push(ValidationError {
+                    field: field.name.clone(),
+                    message: format!("{} is required", field.label),
+                    constraint: Some(Constraint::Required),
+                });
+            }
+        }
+
         for constraint in &field.constraints {
             match constraint {
                 Constraint::Required => {
-                    if value.is_none() || matches!(value, Some(super::value::Value::None)) {
+                    if is_missing {
                         errors.push(ValidationError {
                             field: field.name.clone(),
                             message: format!("{} is required", field.label),

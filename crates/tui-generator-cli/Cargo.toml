@@ -1,0 +1,13 @@
+[package]
+name = "tui-generator-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "tui-gen"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+tui-generator-core = { path = "../tui-generator-core" }
+tui-generator-ratatui = { path = "../tui-generator-ratatui" }

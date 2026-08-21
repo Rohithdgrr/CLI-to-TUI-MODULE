@@ -112,7 +112,6 @@ fn main() {
     println!();
 
     let border = "+".to_owned() + &"-".repeat(68) + "+";
-    let empty = "|".to_owned() + &" ".repeat(68) + "|";
 
     let centered = |s: &str, w: usize| -> String {
         let pad = w.saturating_sub(s.len());

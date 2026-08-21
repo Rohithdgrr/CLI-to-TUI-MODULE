@@ -1,38 +1,17 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TuiError {
+    #[error("Terminal error: {0}")]
     TerminalError(String),
+    #[error("Validation failed: {0:?}")]
     ValidationError(Vec<crate::validation::ValidationError>),
+    #[error("Conversion error: {0}")]
     ConversionError(String),
+    #[error("Unsupported type: {0}")]
     UnsupportedType(String),
+    #[error("Cancelled by user")]
     Cancelled,
-    IoError(std::io::Error),
-}
-
-impl fmt::Display for TuiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TuiError::TerminalError(msg) => write!(f, "Terminal error: {}", msg),
-            TuiError::ValidationError(errors) => {
-                write!(f, "Validation failed:")?;
-                for e in errors {
-                    write!(f, "\n  - {}", e)?;
-                }
-                Ok(())
-            }
-            TuiError::ConversionError(msg) => write!(f, "Conversion error: {}", msg),
-            TuiError::UnsupportedType(msg) => write!(f, "Unsupported type: {}", msg),
-            TuiError::Cancelled => write!(f, "Cancelled by user"),
-            TuiError::IoError(e) => write!(f, "IO error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for TuiError {}
-
-impl From<std::io::Error> for TuiError {
-    fn from(e: std::io::Error) -> Self {
-        TuiError::IoError(e)
-    }
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }

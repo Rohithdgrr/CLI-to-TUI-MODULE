@@ -1,139 +1,118 @@
-use tui_generator_core::schema::{Field, TuiSchema};
-use tui_generator_core::value::Value;
+use std::path::PathBuf;
+use tui_generator_core::schema::{TuiSchema, Field};
 use tui_generator_core::widget::WidgetKind;
 use tui_generator_core::validation::Constraint;
 use tui_generator_ratatui::RatatuiRenderer;
 
-fn build_schema() -> TuiSchema {
-    TuiSchema {
-        name: "Image Processor".to_string(),
-        description: Some("Configure image processing options".to_string()),
+fn main() {
+    let schema = TuiSchema {
+        name: "Image Processor".into(),
+        description: Some("Convert any webpage into a desktop app".into()),
         fields: vec![
             Field {
-                name: "input".to_string(),
-                label: "Input File".to_string(),
-                description: Some("Path to input image".to_string()),
+                name: "input".into(),
+                label: "Input Path".into(),
+                description: Some("Source image to process".into()),
                 required: true,
-                default: Some(Value::String("./input.png".to_string())),
-                widget: WidgetKind::TextInput,
-                constraints: vec![],
+                default: Some(tui_generator_core::value::Value::String("./input.png".into())),
+                widget: WidgetKind::PathInput,
+                constraints: vec![Constraint::Required],
                 options: vec![],
                 skip: false,
-                section: None,
+                section: Some("Source".into()),
                 readonly: false,
             },
             Field {
-                name: "output".to_string(),
-                label: "Output File".to_string(),
-                description: Some("Path to output image".to_string()),
+                name: "output".into(),
+                label: "Output Path".into(),
+                description: Some("Destination for processed image".into()),
                 required: true,
-                default: Some(Value::String("./output.png".to_string())),
-                widget: WidgetKind::TextInput,
-                constraints: vec![],
+                default: Some(tui_generator_core::value::Value::String("./output.jpg".into())),
+                widget: WidgetKind::PathInput,
+                constraints: vec![Constraint::Required],
                 options: vec![],
                 skip: false,
-                section: None,
+                section: Some("Source".into()),
                 readonly: false,
             },
             Field {
-                name: "threads".to_string(),
-                label: "Threads".to_string(),
-                description: Some("Number of processing threads".to_string()),
+                name: "width".into(),
+                label: "Window Width".into(),
+                description: None,
                 required: false,
-                default: Some(Value::Integer(4)),
+                default: Some(tui_generator_core::value::Value::Integer(1200)),
                 widget: WidgetKind::NumberInput,
-                constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(64.0)],
+                constraints: vec![],
                 options: vec![],
                 skip: false,
-                section: None,
+                section: Some("Window".into()),
                 readonly: false,
             },
             Field {
-                name: "format".to_string(),
-                label: "Output Format".to_string(),
-                description: Some("Image output format".to_string()),
+                name: "height".into(),
+                label: "Window Height".into(),
+                description: None,
                 required: false,
-                default: Some(Value::String("png".to_string())),
+                default: Some(tui_generator_core::value::Value::Integer(800)),
+                widget: WidgetKind::NumberInput,
+                constraints: vec![],
+                options: vec![],
+                skip: false,
+                section: Some("Window".into()),
+                readonly: false,
+            },
+            Field {
+                name: "fullscreen".into(),
+                label: "Start Fullscreen".into(),
+                description: None,
+                required: false,
+                default: Some(tui_generator_core::value::Value::Bool(false)),
+                widget: WidgetKind::Checkbox,
+                constraints: vec![],
+                options: vec![],
+                skip: false,
+                section: Some("Window".into()),
+                readonly: false,
+            },
+            Field {
+                name: "format".into(),
+                label: "Output Format".into(),
+                description: None,
+                required: false,
+                default: Some(tui_generator_core::value::Value::String("png".into())),
                 widget: WidgetKind::Select,
                 constraints: vec![],
-                options: vec![
-                    "png".to_string(),
-                    "jpg".to_string(),
-                    "webp".to_string(),
-                    "gif".to_string(),
-                ],
+                options: vec!["png".into(), "jpg".into(), "webp".into(), "gif".into()],
                 skip: false,
-                section: None,
+                section: Some("Options".into()),
                 readonly: false,
             },
             Field {
-                name: "quality".to_string(),
-                label: "Quality".to_string(),
-                description: Some("Compression quality (1-100)".to_string()),
+                name: "verbose".into(),
+                label: "Verbose Output".into(),
+                description: None,
                 required: false,
-                default: Some(Value::Integer(85)),
-                widget: WidgetKind::NumberInput,
-                constraints: vec![Constraint::MinValue(1.0), Constraint::MaxValue(100.0)],
-                options: vec![],
-                skip: false,
-                section: None,
-                readonly: false,
-            },
-            Field {
-                name: "verbose".to_string(),
-                label: "Verbose".to_string(),
-                description: Some("Enable verbose output".to_string()),
-                required: false,
-                default: Some(Value::Bool(false)),
+                default: Some(tui_generator_core::value::Value::Bool(false)),
                 widget: WidgetKind::Checkbox,
                 constraints: vec![],
                 options: vec![],
                 skip: false,
-                section: None,
-                readonly: false,
-            },
-            Field {
-                name: "overwrite".to_string(),
-                label: "Overwrite".to_string(),
-                description: Some("Overwrite existing files".to_string()),
-                required: false,
-                default: Some(Value::Bool(true)),
-                widget: WidgetKind::Checkbox,
-                constraints: vec![],
-                options: vec![],
-                skip: false,
-                section: None,
+                section: Some("Options".into()),
                 readonly: false,
             },
         ],
         subcommands: vec![],
-    }
-}
+    };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let schema = build_schema();
-
-    println!("Launching TUI...");
-    println!("Use arrow keys to navigate, Enter to edit, Space to toggle checkboxes");
-    println!("Press 'q' or Esc to quit.\n");
-
-    match RatatuiRenderer::run(&schema) {
+    println!("Starting TUI demo... Press any key in the TUI to continue after splash.");
+    
+    match RatatuiRenderer::new().run_tui(&schema) {
         Ok(state) => {
-            println!("\n--- Submitted Values ---");
-            for field in &schema.fields {
-                match state.get_value(&field.name) {
-                    Some(Value::String(s)) => println!("  {}: {}", field.label, s),
-                    Some(Value::Integer(n)) => println!("  {}: {}", field.label, n),
-                    Some(Value::Float(n)) => println!("  {}: {}", field.label, n),
-                    Some(Value::Bool(b)) => println!("  {}: {}", field.label, b),
-                    _ => println!("  {}: (empty)", field.label),
-                }
-            }
+            println!("\n✓ Form submitted successfully!");
+            println!("Values: {:?}", state.values);
         }
         Err(e) => {
-            eprintln!("TUI exited: {}", e);
+            eprintln!("\n✗ TUI error or cancelled: {}", e);
         }
     }
-
-    Ok(())
 }

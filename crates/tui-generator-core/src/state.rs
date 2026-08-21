@@ -5,6 +5,7 @@ use crate::value::Value;
 #[derive(Debug, Clone)]
 pub struct FormState {
     pub values: HashMap<String, Value>,
+    pub edit_buffers: HashMap<String, String>,
     pub focused_index: usize,
     pub scroll_offset: usize,
     pub editing: bool,
@@ -26,6 +27,7 @@ impl FormState {
         }
         Self {
             values,
+            edit_buffers: HashMap::new(),
             focused_index: 0,
             scroll_offset: 0,
             editing: false,
@@ -77,6 +79,10 @@ impl FormState {
     }
 
     pub fn edit_buffer(&self, field_name: &str) -> String {
+        // Prefer the in-progress edit buffer if present
+        if let Some(buf) = self.edit_buffers.get(field_name) {
+            return buf.clone();
+        }
         match self.values.get(field_name) {
             Some(Value::String(s)) => s.clone(),
             Some(Value::Integer(n)) => n.to_string(),
@@ -88,20 +94,30 @@ impl FormState {
     }
 
     pub fn set_edit_buffer(&mut self, field_name: &str, buffer: String, widget: crate::widget::WidgetKind) {
-        let value = match widget {
+        // Store the raw edit buffer for rendering during edit mode
+        self.edit_buffers.insert(field_name.to_string(), buffer.clone());
+        // Attempt to convert and store a valid value if possible
+        let value_opt = match widget {
             crate::widget::WidgetKind::NumberInput => {
                 if let Ok(n) = buffer.parse::<i64>() {
-                    Value::Integer(n)
+                    Some(Value::Integer(n))
                 } else if let Ok(f) = buffer.parse::<f64>() {
-                    Value::Float(f)
+                    Some(Value::Float(f))
                 } else {
-                    Value::String(buffer)
+                    // Invalid number input – keep previous value unchanged
+                    None
                 }
             }
-            crate::widget::WidgetKind::Checkbox => Value::Bool(buffer == "true"),
-            _ => Value::String(buffer),
+            crate::widget::WidgetKind::Checkbox => {
+                Some(Value::Bool(buffer == "true"))
+            }
+            _ => Some(Value::String(buffer)),
         };
-        self.values.insert(field_name.to_string(), value);
+        if let Some(val) = value_opt {
+            self.values.insert(field_name.to_string(), val);
+            // Clear the edit buffer after successful commit
+            self.edit_buffers.remove(field_name);
+        }
     }
 
     #[cfg(feature = "serde")]

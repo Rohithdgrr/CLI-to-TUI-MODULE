@@ -1,0 +1,5 @@
+error: Tui only supports structs with named fields
+ --> tests/ui/fail_tuple_struct.rs:4:1
+  |
+4 | struct Tuple(String, i32);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^

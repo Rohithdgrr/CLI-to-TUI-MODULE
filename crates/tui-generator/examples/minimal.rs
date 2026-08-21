@@ -7,6 +7,8 @@ struct Cli {
     name: String,
 }
 
-fn main() {
-    println!("ok");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse_or_tui()?;
+    println!("Hello, {}!", cli.name);
+    Ok(())
 }
